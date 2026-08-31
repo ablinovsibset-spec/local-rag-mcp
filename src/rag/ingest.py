@@ -27,13 +27,13 @@ def load_document(path: Path) -> str:
     raise ValueError(f"Unsupported format: {path}")
 
 
-def ingest_documents():
-    """Ingest all documents from the documents directory."""
+def ingest_documents(directory=None):
+    """Ingest all documents from the documents directory (recursively)."""
     documents = []
 
-    base_dir = Path(DOCUMENTS_DIR)
+    base_dir = Path(directory) if directory is not None else Path(DOCUMENTS_DIR)
     if not base_dir.exists():
-        print(f"Warning: Documents directory {DOCUMENTS_DIR} does not exist")
+        print(f"Warning: Documents directory {base_dir} does not exist")
         return documents
 
     for path in base_dir.rglob("*"):
@@ -46,8 +46,6 @@ def ingest_documents():
                 })
             except Exception as e:
                 print(f"Error loading {path}: {e}")
-        else:
-            [documents.append(doc) for doc in ingest_documents(path)]
 
     return documents
 
