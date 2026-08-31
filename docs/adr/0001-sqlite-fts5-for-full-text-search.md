@@ -1,0 +1,3 @@
+# SQLite FTS5 for Full-Text Search
+
+Chunks already live in memory (loaded from `chunks.pkl`), so an in-memory BM25 (`rank_bm25`) would have needed no new store — but we chose SQLite FTS5 as a persistent on-disk index built during `build_index`, ranked with its built-in `bm25()`. The on-disk index scales toward the larger corpora the README anticipates and gives Full-Text Search a lifecycle independent of process memory; the cost is a third artifact (`src/fts_index.db`) kept consistent by full rebuilds. Russian morphology is handled by pre-stemming tokens in Python (Snowball via PyStemmer) before insert and before `MATCH`, because FTS5's built-in tokenizers do not stem Cyrillic.

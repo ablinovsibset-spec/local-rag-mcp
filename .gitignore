@@ -242,3 +242,7 @@ python-rag/
 
 /**.md
 /**.txt
+!CONTEXT.md
+!AGENTS.md
+.idea/
+tasks/
