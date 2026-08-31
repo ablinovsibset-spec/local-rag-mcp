@@ -60,6 +60,11 @@ def ready_index(tmp_path, monkeypatch):
     monkeypatch.setattr(query_module, "CHUNKS_PATH", str(tmp_path / "chunks.pkl"))
     monkeypatch.setattr(query_module, "index", None)
     monkeypatch.setattr(query_module, "chunks", [])
+    # Isolate from the hybrid legs' external dependencies:
+    monkeypatch.setattr(query_module, "extract_keywords", lambda q: [])
+    monkeypatch.setattr(
+        query_module, "FTS_INDEX_PATH", str(tmp_path / "missing_fts.db")
+    )
 
     read_calls = {"n": 0}
     real_read_index = faiss.read_index

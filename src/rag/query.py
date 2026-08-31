@@ -1,6 +1,8 @@
 import faiss
+import logging
 import pickle
 import sys
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import numpy as np
@@ -8,14 +10,24 @@ import numpy as np
 # Add parent directory to path for config import
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from llm import chat_completion, embed_texts, E5_QUERY_PREFIX
+from rag.fusion import rrf_fuse
+from rag.fts import fts_available, search_fts
+from rag.keywords import extract_keywords
+from rag.tokenize import tokenize
 from config import (
     FAISS_INDEX_PATH,
     CHUNKS_PATH,
+    FTS_INDEX_PATH,
     EMBEDDING_TIMEOUT,
     CHAT_MODEL,
     CHAT_TIMEOUT,
     TOP_K
 )
+
+logger = logging.getLogger(__name__)
+
+# Each search leg contributes its top LEG_DEPTH hits to RRF fusion
+LEG_DEPTH = 20
 
 # Global variables for index and chunks
 index = None
@@ -68,24 +80,91 @@ def _ensure_index_exists():
         return False
 
 
-def retrieve(query: str):
-    """Retrieve relevant chunks for a query."""
-    # Ensure index exists before retrieving (initializes on first use)
+def _vector_search(query_text):
+    """Vector Search leg: cosine similarity against the FAISS index."""
     if index is None or len(chunks) == 0:
         if not _ensure_index_exists():
-            return []
-
+            raise RuntimeError("vector index unavailable")
     if index is None or len(chunks) == 0:
-        return []
+        raise RuntimeError("vector index unavailable")
 
     q_emb = np.array(
-        embed_texts([E5_QUERY_PREFIX + query], timeout=EMBEDDING_TIMEOUT),
+        embed_texts([E5_QUERY_PREFIX + query_text], timeout=EMBEDDING_TIMEOUT),
         dtype="float32",
     )
     faiss.normalize_L2(q_emb)
 
-    scores, ids = index.search(q_emb, TOP_K)
-    return [chunks[i] for i in ids[0]]
+    _, ids = index.search(q_emb, LEG_DEPTH)
+    return [chunks[i] for i in ids[0] if 0 <= i < len(chunks)]
+
+
+def _fts_search(terms):
+    """Full-Text Search leg over the persistent FTS5 index."""
+    db_path = Path(__file__).parent.parent / FTS_INDEX_PATH
+    if not fts_available(db_path):
+        logger.warning("FTS index missing or empty at %s; Vector Search only", db_path)
+        return []
+    return search_fts(terms, db_path, limit=LEG_DEPTH)
+
+
+def _combined_terms(query, keywords):
+    """Combined term set for the FTS leg: stems of query + keywords, deduped."""
+    terms = []
+    for text in [query] + list(keywords):
+        for stem in tokenize(text):
+            if stem not in terms:
+                terms.append(stem)
+    return terms
+
+
+def retrieve(query: str):
+    """Hybrid Search: Vector Search and Full-Text Search in parallel,
+    fused with RRF and cut to TOP_K chunks.
+
+    The single public retrieval API. Degrades quietly, loudly logged:
+    Keyword Extraction failure -> search with the original query; a failed
+    or empty FTS leg -> Vector Search only; a failed vector leg ->
+    Full-Text Search only. No exception escapes the retrieval boundary.
+    """
+    try:
+        keywords = extract_keywords(query)
+    except Exception as error:
+        logger.warning(
+            "Keyword Extraction failed (%s); searching with the original query", error
+        )
+        keywords = []
+
+    vector_query = " ".join([query] + keywords)
+    fts_terms = _combined_terms(query, keywords)
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        vector_future = pool.submit(_vector_search, vector_query)
+        fts_future = pool.submit(_fts_search, fts_terms)
+
+        try:
+            vector_hits = vector_future.result()
+        except Exception as error:
+            logger.warning("Vector Search failed (%s); Full-Text Search only", error)
+            vector_hits = []
+
+        try:
+            fts_hits = fts_future.result()
+        except Exception as error:
+            logger.warning("Full-Text Search failed (%s); Vector Search only", error)
+            fts_hits = []
+
+    def identity(chunk):
+        return (chunk["source"], chunk["chunk_id"])
+
+    fused = rrf_fuse(
+        [[identity(c) for c in vector_hits], [identity(c) for c in fts_hits]],
+        top_n=TOP_K,
+    )
+
+    by_id = {}
+    for chunk in vector_hits + fts_hits:
+        by_id.setdefault(identity(chunk), chunk)
+    return [by_id[doc_id] for doc_id in fused]
 
 
 def build_prompt(query, contexts):
