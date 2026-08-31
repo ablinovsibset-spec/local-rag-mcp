@@ -1,5 +1,4 @@
 import numpy as np
-from sentence_transformers import SentenceTransformer
 import sys
 from pathlib import Path
 
@@ -7,13 +6,23 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from config import EMBEDDING_MODEL
 
-model = SentenceTransformer(EMBEDDING_MODEL)
+model = None
+
+
+def _get_model():
+    """Load the embedding model on first use, exactly once."""
+    global model
+    if model is None:
+        from sentence_transformers import SentenceTransformer
+
+        model = SentenceTransformer(EMBEDDING_MODEL)
+    return model
 
 
 def embed_chunks(chunks):
     """Generate embeddings for all chunks."""
     texts = [c["text"] for c in chunks]
-    embeddings = model.encode(texts, show_progress_bar=True)
+    embeddings = _get_model().encode(texts, show_progress_bar=True)
     return np.array(embeddings)
 
 
