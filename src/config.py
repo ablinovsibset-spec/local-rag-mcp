@@ -7,8 +7,10 @@ DOCUMENTS_DIR = "./docs"
 CHUNK_SIZE = 700
 CHUNK_OVERLAP = 100
 
-# Embedding model
-EMBEDDING_MODEL = "all-MiniLM-L6-v2"
+# Embedding model (LM Studio embeddings endpoint, e5 prefix contract)
+# intfloat/multilingual-e5-small (118M) served as fp32 GGUF via LM Studio
+EMBEDDING_MODEL = "rodion-m/text-embedding-multilingual-e5-small"
+EMBEDDING_TIMEOUT = 60                     # seconds, embedding requests
 
 # FAISS index paths (relative to src directory)
 FAISS_INDEX_PATH = "index.faiss"

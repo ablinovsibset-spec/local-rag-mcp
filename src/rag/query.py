@@ -3,33 +3,23 @@ import pickle
 import sys
 from pathlib import Path
 
+import numpy as np
+
 # Add parent directory to path for config import
 sys.path.insert(0, str(Path(__file__).parent.parent))
-from llm import chat_completion
+from llm import chat_completion, embed_texts, E5_QUERY_PREFIX
 from config import (
     FAISS_INDEX_PATH,
     CHUNKS_PATH,
-    EMBEDDING_MODEL,
+    EMBEDDING_TIMEOUT,
     CHAT_MODEL,
     CHAT_TIMEOUT,
     TOP_K
 )
 
-model = None
-
 # Global variables for index and chunks
 index = None
 chunks = []
-
-
-def _get_model():
-    """Load the embedding model on first use, exactly once."""
-    global model
-    if model is None:
-        from sentence_transformers import SentenceTransformer
-
-        model = SentenceTransformer(EMBEDDING_MODEL)
-    return model
 
 
 def _ensure_index_exists():
@@ -88,7 +78,10 @@ def retrieve(query: str):
     if index is None or len(chunks) == 0:
         return []
 
-    q_emb = _get_model().encode([query])
+    q_emb = np.array(
+        embed_texts([E5_QUERY_PREFIX + query], timeout=EMBEDDING_TIMEOUT),
+        dtype="float32",
+    )
     faiss.normalize_L2(q_emb)
 
     scores, ids = index.search(q_emb, TOP_K)

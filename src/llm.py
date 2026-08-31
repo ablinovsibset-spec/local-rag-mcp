@@ -1,4 +1,4 @@
-"""Thin wrapper over LM Studio's OpenAI-compatible chat API."""
+"""Thin wrappers over LM Studio's OpenAI-compatible API."""
 
 import sys
 from pathlib import Path
@@ -7,7 +7,11 @@ import requests
 
 # Add current directory to path for config import
 sys.path.insert(0, str(Path(__file__).parent))
-from config import LM_STUDIO_BASE_URL
+from config import EMBEDDING_MODEL, LM_STUDIO_BASE_URL
+
+# The e5 embedding contract: prefixes required at query and index time
+E5_QUERY_PREFIX = "query: "
+E5_PASSAGE_PREFIX = "passage: "
 
 
 def chat_completion(model, messages, timeout, temperature=None):
@@ -22,3 +26,21 @@ def chat_completion(model, messages, timeout, temperature=None):
     )
     response.raise_for_status()
     return response.json()["choices"][0]["message"]["content"]
+
+
+def embed_texts(texts, timeout):
+    """Embed texts via LM Studio, preserving input order.
+
+    One request per text: this LM Studio build returns the first input's
+    embedding for every item of a batched embeddings request.
+    """
+    embeddings = []
+    for text in texts:
+        response = requests.post(
+            f"{LM_STUDIO_BASE_URL}/embeddings",
+            json={"model": EMBEDDING_MODEL, "input": [text]},
+            timeout=timeout,
+        )
+        response.raise_for_status()
+        embeddings.append(response.json()["data"][0]["embedding"])
+    return embeddings

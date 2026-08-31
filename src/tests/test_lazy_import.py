@@ -44,12 +44,10 @@ def test_importing_retrieval_modules_is_side_effect_free():
         elapsed = time.time() - start
 
         import rag.chunk as c
-        import rag.embed as e
         import rag.query as q
 
         assert q.index is None, "FAISS index loaded at import time"
         assert q.chunks == [], "chunks loaded at import time"
-        assert e.model is None, "embedding model loaded at import time"
         assert c.encoder is None, "tokenizer loaded at import time"
         assert elapsed < 5, f"import took {elapsed:.2f}s"
         print("OK")
