@@ -12,6 +12,29 @@ import rag.query as query_module
 
 
 @pytest.fixture
+def nested_corpus(tmp_path):
+    """Nested fixture docs seeded through the ingestion path, with Russian
+    inflected forms and a rare English term for FTS matching."""
+    (tmp_path / "Бэкенд" / "База данных").mkdir(parents=True)
+    (tmp_path / "Фронтенд").mkdir()
+
+    (tmp_path / "Бэкенд" / "База данных" / "db.md").write_text(
+        "Запуск сервера: для запуска базы данных используется asyncpg пул соединений. "
+        "В окружении задайте POSTGRES_USER перед запуском миграций.",
+        encoding="utf-8",
+    )
+    (tmp_path / "Фронтенд" / "front.md").write_text(
+        "Слои фронтенда: app, pages, widgets. Компоненты UI переиспользуются между слоями.",
+        encoding="utf-8",
+    )
+    (tmp_path / "root.md").write_text(
+        "Общая информация о проекте и структура документации.",
+        encoding="utf-8",
+    )
+    return tmp_path
+
+
+@pytest.fixture
 def ready_index(tmp_path, monkeypatch):
     """An on-disk FAISS index + chunks.pkl, with lazy state reset and a
     read-counter. Tests patch their own query-embedding fake on top."""

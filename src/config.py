@@ -15,6 +15,7 @@ EMBEDDING_TIMEOUT = 60                     # seconds, embedding requests
 # FAISS index paths (relative to src directory)
 FAISS_INDEX_PATH = "index.faiss"
 CHUNKS_PATH = "chunks.pkl"
+FTS_INDEX_PATH = "fts_index.db"
 
 # LM Studio configuration (OpenAI-compatible API)
 LM_STUDIO_BASE_URL = "http://localhost:1234/v1"
