@@ -47,28 +47,24 @@ def list_documents() -> str:
         return f"Error listing documents: {str(e)}"
 
 
-@mcp.tool
 def search_documents(query: str) -> str:
-    """Searches for documents by name (case-insensitive)."""
+    """Searches the knowledge base content via Hybrid Search, returning
+    relevant passages with their sources."""
     try:
-        base_dir = Path(DOCUMENTS_DIR)
-        if not base_dir.exists():
-            return f"Error: Documents directory {DOCUMENTS_DIR} does not exist"
-        
-        query_lower = query.lower()
-        matches = []
-        
-        for path in base_dir.rglob("*"):
-            if path.is_file() and path.suffix.lower() in {".txt", ".md", ".pdf", ".docx"}:
-                if query_lower in path.name.lower():
-                    matches.append(str(path.relative_to(base_dir)))
-        
-        if not matches:
-            return f"No documents found matching '{query}'"
-        
-        return "\n".join(f"- {doc}" for doc in sorted(matches))
+        from rag.query import retrieve
+
+        results = retrieve(query)
+        if not results:
+            return f"No passages found for '{query}'"
+
+        return "\n\n".join(
+            f"[Source: {r['source']}]\n{r['text']}" for r in results
+        )
     except Exception as e:
         return f"Error searching documents: {str(e)}"
+
+
+mcp.tool(search_documents)
 
 
 if __name__ == "__main__":

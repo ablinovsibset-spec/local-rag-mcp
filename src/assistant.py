@@ -54,7 +54,7 @@ User question: {query}
 Available MCP tools:
 1. read_document(file_path: str) - Read a specific document file (use when you need full document content)
 2. list_documents() - List all available documents (use when user asks "what documents exist" or "list all docs")
-3. search_documents(query: str) - Search for documents by name (use when user asks to find a specific document)
+3. search_documents(query: str) - Search the knowledge base content for relevant passages (use when the chunks above are not enough or user asks to find specific information)
 
 Decision rules:
 - If the retrieved chunks fully answer the question, set use_mcp to false
