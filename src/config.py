@@ -14,9 +14,12 @@ EMBEDDING_MODEL = "all-MiniLM-L6-v2"
 FAISS_INDEX_PATH = "index.faiss"
 CHUNKS_PATH = "chunks.pkl"
 
-# Ollama configuration
-OLLAMA_URL = "http://localhost:11434/api/generate"
-OLLAMA_MODEL = "qwen3:0.6b"
+# LM Studio configuration (OpenAI-compatible API)
+LM_STUDIO_BASE_URL = "http://localhost:1234/v1"
+CHAT_MODEL = "openai/gpt-oss-20b"        # final RAG answer
+TOOL_DECISION_MODEL = "qwen3-0.6b-mlx"   # MCP-tool decision / Keyword Extraction
+CHAT_TIMEOUT = 120                       # seconds, final answer
+TOOL_DECISION_TIMEOUT = 10               # seconds, tool decision / Keyword Extraction
 
 # RAG retrieval configuration
 TOP_K = 5

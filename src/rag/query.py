@@ -1,17 +1,17 @@
 import faiss
 import pickle
-import requests
 import sys
 from pathlib import Path
 
 # Add parent directory to path for config import
 sys.path.insert(0, str(Path(__file__).parent.parent))
+from llm import chat_completion
 from config import (
     FAISS_INDEX_PATH,
     CHUNKS_PATH,
     EMBEDDING_MODEL,
-    OLLAMA_URL,
-    OLLAMA_MODEL,
+    CHAT_MODEL,
+    CHAT_TIMEOUT,
     TOP_K
 )
 
@@ -131,16 +131,12 @@ def build_prompt(query, contexts):
 
 
 def ask_llm(prompt):
-    """Query Ollama LLM."""
-    response = requests.post(
-        OLLAMA_URL,
-        json={
-            "model": OLLAMA_MODEL,
-            "prompt": prompt,
-            "stream": False
-        }
+    """Query the chat model via LM Studio."""
+    return chat_completion(
+        CHAT_MODEL,
+        [{"role": "user", "content": prompt}],
+        timeout=CHAT_TIMEOUT,
     )
-    return response.json()["response"]
 
 
 def ask(query: str):

@@ -1,5 +1,4 @@
 import json
-import ollama
 import sys
 from pathlib import Path
 from rich.console import Console
@@ -7,15 +6,15 @@ from rich.markdown import Markdown
 
 # Add current directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent))
+from llm import chat_completion
 from rag.query import retrieve, build_prompt, ask_llm
 from mcp.client import MCPClient
-from config import OLLAMA_MODEL
+from config import TOOL_DECISION_MODEL, TOOL_DECISION_TIMEOUT
 
 class CompanyKBAssistant:
     """Company Knowledge Base Assistant combining RAG and MCP."""
-    
+
     def __init__(self):
-        self.llm_client = ollama.Client()
         self.mcp = None
         self._init_mcp()
         
@@ -76,15 +75,15 @@ Examples:
 Your JSON response:"""
 
         try:
-            response = self.llm_client.chat(
-                model=OLLAMA_MODEL,
-                messages=[
+            response_text = chat_completion(
+                TOOL_DECISION_MODEL,
+                [
                     {"role": "system", "content": "You are a helpful assistant that decides when to use tools. Always respond with valid JSON only."},
                     {"role": "user", "content": decision_prompt}
-                ]
-            )
-            
-            response_text = response["message"]["content"].strip()
+                ],
+                timeout=TOOL_DECISION_TIMEOUT,
+                temperature=0,
+            ).strip()
             
             # Clean up JSON if wrapped in markdown
             if response_text.startswith("```"):
