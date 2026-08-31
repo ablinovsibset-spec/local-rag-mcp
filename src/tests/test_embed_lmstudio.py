@@ -17,7 +17,10 @@ def test_embed_chunks_prefixes_each_passage(monkeypatch):
         [{"text": "первый чанк"}, {"text": "второй чанк"}]
     )
 
-    assert captured["texts"] == ["passage: первый чанк", "passage: второй чанк"]
+    assert captured["texts"] == [
+        "search_document: первый чанк",
+        "search_document: второй чанк",
+    ]
     assert result.shape == (2, 2)
     assert result.dtype == np.float32
 
@@ -49,6 +52,6 @@ def test_retrieve_embeds_query_with_query_prefix(monkeypatch, ready_index):
 
     results = query_module.retrieve("как настроить прокси?")
 
-    assert captured["texts"] == ["query: как настроить прокси?"]
+    assert captured["texts"] == ["search_query: как настроить прокси?"]
     assert len(results) > 0
     assert ready_index["n"] == 1

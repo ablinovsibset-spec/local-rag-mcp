@@ -71,7 +71,7 @@ def test_vector_leg_receives_query_plus_keywords_concatenated(
 
     assert hybrid_env["state"]["keywords_seen"] == "как настроить прокси"
     assert hybrid_env["state"]["captured_query"] == (
-        "query: как настроить прокси nginx"
+        "search_query: как настроить прокси nginx"
     )
 
 
@@ -144,7 +144,7 @@ def test_keyword_extraction_failure_searches_original_query(
     with caplog.at_level(logging.WARNING):
         results = query_module.retrieve("слои фронтенда")
 
-    assert hybrid_env["state"]["captured_query"] == "query: слои фронтенда"
+    assert hybrid_env["state"]["captured_query"] == "search_query: слои фронтенда"
     assert len(results) > 0
     assert any("Keyword Extraction failed" in r.message for r in caplog.records)
 

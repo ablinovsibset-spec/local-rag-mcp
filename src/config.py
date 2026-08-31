@@ -7,9 +7,11 @@ DOCUMENTS_DIR = "./docs"
 CHUNK_SIZE = 700
 CHUNK_OVERLAP = 100
 
-# Embedding model (LM Studio embeddings endpoint, e5 prefix contract)
-# intfloat/multilingual-e5-small (118M) served as fp32 GGUF via LM Studio
-EMBEDDING_MODEL = "rodion-m/text-embedding-multilingual-e5-small"
+# Embedding model (LM Studio embeddings endpoint).
+# Multilingual (100+ languages incl. Russian). nomic-bert-moe architecture —
+# the engine path that pools correctly; XLM-R/e5 BERT GGUFs served by this
+# LM Studio build produce degenerate similarity (see benchmark notes).
+EMBEDDING_MODEL = "text-embedding-nomic-embed-text-v2-moe"
 EMBEDDING_TIMEOUT = 60                     # seconds, embedding requests
 
 # FAISS index paths (relative to src directory)

@@ -9,9 +9,9 @@ import requests
 sys.path.insert(0, str(Path(__file__).parent))
 from config import EMBEDDING_MODEL, LM_STUDIO_BASE_URL
 
-# The e5 embedding contract: prefixes required at query and index time
-E5_QUERY_PREFIX = "query: "
-E5_PASSAGE_PREFIX = "passage: "
+# The embedding model's task prefixes, required at query and index time
+EMBEDDING_QUERY_PREFIX = "search_query: "
+EMBEDDING_PASSAGE_PREFIX = "search_document: "
 
 
 def chat_completion(model, messages, timeout, temperature=None):

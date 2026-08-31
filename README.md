@@ -98,10 +98,41 @@ search_documents(query)
 ```
 Language:      Python 3.10+
 Vector DB:     FAISS
-Embeddings:    SentenceTransformers
-LLM:           Ollama (local)
+Full-Text:     SQLite FTS5 (bm25, RU/EN Snowball stemming via PyStemmer)
+Embeddings:    nomic-embed-text-v2-moe (LM Studio, multilingual)
+LLM:           LM Studio (OpenAI-compatible API): gpt-oss-20b answers, qwen3-0.6b-mlx assists
 MCP:           FastMCP
 ```
+
+# 📊 Retrieval Benchmark
+
+Three arms over the real corpus (258 chunks, 12 Russian queries drafted from
+corpus content; file-level relevance labels — agent-drafted, pending human review).
+Rerun with one command: `python main.py benchmark` (requires a built index and
+LM Studio serving the embedding models).
+
+| Arm | recall@5 | precision@5 | latency (ms/query) |
+|-----|----------|-------------|--------------------|
+| Vector (nomic-v1.5, English-focused) | 0.47 | 0.17 | 12 |
+| Vector (nomic-v2-moe, multilingual) | 0.92 | 0.35 | 19 |
+| Hybrid (multilingual + FTS + RRF) | 0.92 | 0.31 | 1896 |
+
+Reading the table:
+
+- **Multilingual embeddings are the big win**: recall@5 doubles (0.47 → 0.92)
+  over the English-focused baseline — the stand-in for the original
+  `all-MiniLM-L6-v2`, which LM Studio cannot serve.
+- **Hybrid Search holds the recall** and adds lexical hits for rare terms,
+  abbreviations, and exact file/command names (visible in live queries such
+  as `migration_policy` or `flask-limiter`), at the cost of some precision
+  (FTS adds lexically-matching neighbors) and latency — the Keyword
+  Extraction LLM call dominates the ~1.9s.
+- **Model note**: the spec planned `multilingual-e5-small`, but no e5 build
+  could be served correctly through this LM Studio's embeddings endpoint
+  (XLM-R "BERT" GGUFs produce degenerate similarity; the MLX backend
+  rejects BERT). The multilingual nomic-v2-moe runs on the engine path that
+  pools correctly and is a config-constant swap
+  (`EMBEDDING_MODEL` in `src/config.py`).
 
 # 📁 Project Structure
 

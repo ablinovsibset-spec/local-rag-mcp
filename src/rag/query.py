@@ -9,7 +9,7 @@ import numpy as np
 
 # Add parent directory to path for config import
 sys.path.insert(0, str(Path(__file__).parent.parent))
-from llm import chat_completion, embed_texts, E5_QUERY_PREFIX
+from llm import chat_completion, embed_texts, EMBEDDING_QUERY_PREFIX
 from rag.fusion import rrf_fuse
 from rag.fts import fts_available, search_fts
 from rag.keywords import extract_keywords
@@ -89,7 +89,7 @@ def _vector_search(query_text):
         raise RuntimeError("vector index unavailable")
 
     q_emb = np.array(
-        embed_texts([E5_QUERY_PREFIX + query_text], timeout=EMBEDDING_TIMEOUT),
+        embed_texts([EMBEDDING_QUERY_PREFIX + query_text], timeout=EMBEDDING_TIMEOUT),
         dtype="float32",
     )
     faiss.normalize_L2(q_emb)
