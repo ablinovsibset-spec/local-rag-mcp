@@ -13,6 +13,7 @@ ENV/
 index.faiss
 *.pkl
 chunks.pkl
+fts_index.db
 
 # IDE
 .vscode/
