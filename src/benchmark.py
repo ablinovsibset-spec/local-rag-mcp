@@ -23,18 +23,16 @@ from pathlib import Path
 
 import faiss
 import numpy as np
-import requests
 
 # Add current directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent))
 import rag.query as query_module
-from config import (
-    CHUNKS_PATH,
-    EMBEDDING_TIMEOUT,
-    FAISS_INDEX_PATH,
-    LM_STUDIO_BASE_URL,
-    TOP_K,
+from llm import (
+    EMBEDDING_PASSAGE_PREFIX,
+    EMBEDDING_QUERY_PREFIX,
+    embed_texts,
 )
+from config import CHUNKS_PATH, FAISS_INDEX_PATH, TOP_K
 
 BASELINE_MODEL = "text-embedding-nomic-embed-text-v1.5"
 
@@ -110,19 +108,14 @@ def precision_at_k(hits, relevant, k=TOP_K):
     return len(files & set(relevant)) / len(files)
 
 
-def _embed_baseline(text, task_prefix):
-    response = requests.post(
-        f"{LM_STUDIO_BASE_URL}/embeddings",
-        json={"model": BASELINE_MODEL, "input": [task_prefix + text]},
-        timeout=EMBEDDING_TIMEOUT,
-    )
-    response.raise_for_status()
-    return response.json()["data"][0]["embedding"]
-
-
 def build_baseline_index(chunks):
     vectors = np.array(
-        [_embed_baseline(c["text"], "search_document: ") for c in chunks],
+        [
+            embed_texts(
+                [EMBEDDING_PASSAGE_PREFIX + c["text"]], 60, model=BASELINE_MODEL
+            )[0]
+            for c in chunks
+        ],
         dtype="float32",
     )
     index = faiss.IndexFlatIP(vectors.shape[1])
@@ -136,7 +129,8 @@ def make_baseline_arm(chunks):
 
     def retrieve_baseline(query):
         q_vec = np.array(
-            [_embed_baseline(query, "search_query: ")], dtype="float32"
+            [embed_texts([EMBEDDING_QUERY_PREFIX + query], 60, model=BASELINE_MODEL)[0]],
+            dtype="float32",
         )
         faiss.normalize_L2(q_vec)
         _, ids = index.search(q_vec, TOP_K)

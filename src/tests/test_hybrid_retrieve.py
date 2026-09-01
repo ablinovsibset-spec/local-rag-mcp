@@ -164,6 +164,19 @@ def test_both_legs_fail_returns_empty_without_raising(
     assert query_module.retrieve("любой вопрос") == []
 
 
+def test_fusion_failure_never_escapes_retrieval(hybrid_env, monkeypatch):
+    monkeypatch.setattr(
+        query_module, "embed_texts", lambda texts, timeout: [[1.0, 0.0, 0.0]]
+    )
+
+    def broken_fuse(ranked_lists, top_n=None):
+        raise RuntimeError("fusion bug")
+
+    monkeypatch.setattr(query_module, "rrf_fuse", broken_fuse)
+
+    assert query_module.retrieve("вопрос") == []
+
+
 def test_fused_list_is_cut_to_top_k(hybrid_env, tmp_path, monkeypatch):
     import pickle
 

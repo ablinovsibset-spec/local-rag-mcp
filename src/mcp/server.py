@@ -64,6 +64,8 @@ def search_documents(query: str) -> str:
         return f"Error searching documents: {str(e)}"
 
 
+# Registered after the def (unlike the tools above) so the plain function
+# stays directly importable for unit tests.
 mcp.tool(search_documents)
 
 

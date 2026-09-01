@@ -16,7 +16,7 @@ A **local, intelligent Q&A system** using:
 
 - **RAG**: Semantic search over documentation
 - **MCP**: Dynamic document access
-- **Local LLM**: Privacy-preserving answers (Ollama)
+- **Local LLM**: Privacy-preserving answers (LM Studio)
 
 # ✨ Key Benefits
 
@@ -40,7 +40,7 @@ A **local, intelligent Q&A system** using:
      │           │
      └─────┬─────┘
            ▼
-    [Ollama LLM]
+    [LM Studio LLM]
 ```
 
 # 🏗️ Architecture - Storage
@@ -61,9 +61,10 @@ A **local, intelligent Q&A system** using:
 
 1. Document Loading → Read .md, .txt, .pdf, .docx
 2. Chunking → Split into 700-char chunks
-3. Embedding → Use SentenceTransformers
+3. Embedding → LM Studio embeddings (multilingual)
 4. Indexing → Build FAISS vector index
-5. Query → Retrieve top 5 similar chunks
+5. Query → Hybrid Search: Keyword Extraction, then Vector Search +
+   Full-Text Search in parallel, fused with RRF, top 5 chunks
 6. Prompt Building → Create context-aware prompt
 7. LLM Generation → Get answer from model
 
@@ -116,6 +117,10 @@ LM Studio serving the embedding models).
 | Vector (nomic-v1.5, English-focused) | 0.47 | 0.17 | 12 |
 | Vector (nomic-v2-moe, multilingual) | 0.92 | 0.35 | 19 |
 | Hybrid (multilingual + FTS + RRF) | 0.92 | 0.31 | 1896 |
+
+(Representative run; hybrid recall varies ±0.04 run-to-run with the
+Keyword Extraction LLM, occasionally hitting its 10s timeout and degrading
+to the original query.)
 
 Reading the table:
 
@@ -182,7 +187,7 @@ LLM decides: Use MCP tools?
   ↓
 Build prompt + context
   ↓
-Call Ollama
+Call LM Studio (gpt-oss-20b)
   ↓
 Return answer + sources
 ```
@@ -201,8 +206,9 @@ Return answer + sources
 ```python
 CHUNK_SIZE = 700
 CHUNK_OVERLAP = 100
-EMBEDDING_MODEL = "all-MiniLM-L6-v2"
-OLLAMA_MODEL = "qwen3:0.6b"
+EMBEDDING_MODEL = "text-embedding-nomic-embed-text-v2-moe"
+CHAT_MODEL = "openai/gpt-oss-20b"
+TOOL_DECISION_MODEL = "qwen3-0.6b-mlx"
 TOP_K = 5
 ```
 
@@ -283,8 +289,8 @@ Total Cycle:      2-6s
 # ⚡ Tuning for Speed
 
 ```python
-# Faster (smaller model):
-OLLAMA_MODEL = "qwen3:0.6b"
+# Faster (smaller answer model):
+CHAT_MODEL = "qwen3-0.6b-mlx"  # not recommended for answer quality
 
 # Faster retrieval:
 TOP_K = 3
@@ -294,7 +300,7 @@ CHUNK_SIZE = 500
 # 🚢 Deployment - Single Machine
 
 ```
-1. Install Ollama & Python deps
+1. Install LM Studio & Python deps; load the models from src/config.py
 2. Copy docs/ to server
 3. Build index
 4. Run with nohup
@@ -309,7 +315,7 @@ $ nohup python main.py > log &
        ↓        						 ↓
    [FastAPI]     				 [FastAPI]
        ↓         					 ↓
-[Ollama + FAISS]      			  [FAISS]
+[LM Studio + FAISS]      			  [FAISS]
 ```
 
 # 🚢 Scaling - Option 2: Distributed
@@ -388,7 +394,7 @@ cat config.py
 
 - **Code**: MobilaName/local-rag-mcp
 - **FAISS**: facebook/faiss
-- **Ollama**: ollama.ai
+- **LM Studio**: lmstudio.ai
 - **FastMCP**: github.com/jlowin/fastmcp
 - **Transformers**: huggingface.co
 

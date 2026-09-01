@@ -28,7 +28,7 @@ def chat_completion(model, messages, timeout, temperature=None):
     return response.json()["choices"][0]["message"]["content"]
 
 
-def embed_texts(texts, timeout):
+def embed_texts(texts, timeout, model=None):
     """Embed texts via LM Studio, preserving input order.
 
     One request per text: this LM Studio build returns the first input's
@@ -38,7 +38,7 @@ def embed_texts(texts, timeout):
     for text in texts:
         response = requests.post(
             f"{LM_STUDIO_BASE_URL}/embeddings",
-            json={"model": EMBEDDING_MODEL, "input": [text]},
+            json={"model": model or EMBEDDING_MODEL, "input": [text]},
             timeout=timeout,
         )
         response.raise_for_status()

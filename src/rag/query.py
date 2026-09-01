@@ -83,10 +83,8 @@ def _ensure_index_exists():
 def _vector_search(query_text):
     """Vector Search leg: cosine similarity against the FAISS index."""
     if index is None or len(chunks) == 0:
-        if not _ensure_index_exists():
+        if not _ensure_index_exists() or index is None or len(chunks) == 0:
             raise RuntimeError("vector index unavailable")
-    if index is None or len(chunks) == 0:
-        raise RuntimeError("vector index unavailable")
 
     q_emb = np.array(
         embed_texts([EMBEDDING_QUERY_PREFIX + query_text], timeout=EMBEDDING_TIMEOUT),
@@ -126,6 +124,14 @@ def retrieve(query: str):
     or empty FTS leg -> Vector Search only; a failed vector leg ->
     Full-Text Search only. No exception escapes the retrieval boundary.
     """
+    try:
+        return _hybrid_retrieve(query)
+    except Exception as error:
+        logger.warning("Retrieval failed (%s); returning no chunks", error)
+        return []
+
+
+def _hybrid_retrieve(query):
     try:
         keywords = extract_keywords(query)
     except Exception as error:

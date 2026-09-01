@@ -78,7 +78,8 @@ def search_fts(terms, db_path, limit=20):
     """
     safe_terms = []
     for term in terms:
-        safe_terms.extend(_SAFE_TERM.findall(term.lower()))
+        normalized = term.lower().replace("ё", "е")
+        safe_terms.extend(_SAFE_TERM.findall(normalized))
     if not safe_terms or not Path(db_path).exists():
         return []
 
