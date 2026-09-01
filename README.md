@@ -1,401 +1,195 @@
 # Local RAG/MCP Knowledge Base Assistant
 
-# 📋 The Problem
+Локальный ассистент вопросов-ответов по корпоративной базе знаний: гибридный поиск (Hybrid Search) по документам, MCP-инструменты и полностью локальные LLM через LM Studio. Никакие данные не покидают машину.
 
-- **Growing Documentation**: Knowledge scattered across files
-- **Information Retrieval**: Hard to find answers without keywords
-- **Privacy Concerns**: Cloud solutions may not comply with policies
+## Возможности
 
-```
-Users → Search → Answer = 😫
-```
+- **Hybrid Search**: Vector Search (FAISS) и Full-Text Search (SQLite FTS5, BM25) параллельно, слияние через RRF
+- **Keyword Extraction**: малая LLM выделяет ключевые термины запроса до поиска (тихий fallback на исходный запрос)
+- **Мультиязычность**: эмбеддинги nomic-embed-text-v2-moe (100+ языков, включая русский), стемминг RU/EN (Snowball/PyStemmer)
+- **MCP-инструменты**: LLM может вызвать `read_document`, `list_documents`, `search_documents`
+- **Мультиформат**: `.md`, `.txt`, `.pdf`, `.docx`
+- **Приватность**: все инференсы и индексы — локально, без внешних API
 
-# ✨ The Solution
-
-A **local, intelligent Q&A system** using:
-
-- **RAG**: Semantic search over documentation
-- **MCP**: Dynamic document access
-- **Local LLM**: Privacy-preserving answers (LM Studio)
-
-# ✨ Key Benefits
-
-- ✅ Privacy-first (runs locally)
-- ✅ No API costs
-- ✅ Fast semantic search
-- ✅ Intelligent document access
-- ✅ Complete data control
-
-# 🏗️ Architecture - Top Level
+## Архитектура
 
 ```
-┌──────────────────────┐
-│   User Interface     │ (CLI)
-└──────────┬───────────┘
-           │
-     ┌─────┴─────┐
-     ▼           ▼
-  [RAG]       [MCP]
-   Query      Tools
-     │           │
-     └─────┬─────┘
-           ▼
-    [LM Studio LLM]
-```
-
-# 🏗️ Architecture - Storage
-
-```
-┌────────────────┐
-│  FAISS Index   │ Vector Database
-│  + MCP Tools   │
-└────────┬───────┘
+User → CLI (main.py)
          │
-    ┌────▼─────┐
-    │   docs/  │
-    │directory │
-    └──────────┘
+         ▼
+   assistant.py ──► MCP-клиент ──► mcp/server.py (FastMCP, stdio)
+         │                               │
+         ▼                               ▼
+   rag/query.py: retrieve()      Инструменты над docs/
+     1. Keyword Extraction (qwen3-0.6b-mlx)
+     2. Vector Search (FAISS)  ┐ параллельно
+     3. Full-Text Search (FTS5)┘
+     4. RRF-слияние → TOP_K чанков
+         │
+         ▼
+   Prompt + LLM (gpt-oss-20b) → ответ + источники
 ```
 
-# 🔍 RAG Pipeline
+## Требования
 
-1. Document Loading → Read .md, .txt, .pdf, .docx
-2. Chunking → Split into 700-char chunks
-3. Embedding → LM Studio embeddings (multilingual)
-4. Indexing → Build FAISS vector index
-5. Query → Hybrid Search: Keyword Extraction, then Vector Search +
-   Full-Text Search in parallel, fused with RRF, top 5 chunks
-6. Prompt Building → Create context-aware prompt
-7. LLM Generation → Get answer from model
+- **Python 3.10+**
+- **LM Studio** (https://lmstudio.ai) с загруженными моделями из `src/config.py`:
 
-# 🔍 Why FAISS?
+| Роль | Модель в LM Studio |
+|---|---|
+| Эмбеддинги | `text-embedding-nomic-embed-text-v2-moe` |
+| Финальный ответ | `openai/gpt-oss-20b` |
+| Решение об MCP-инструментах / Keyword Extraction | `qwen3-0.6b-mlx` |
 
-- Fast vector similarity search
-- Lightweight and memory-efficient
-- No external dependencies
-- Perfect for local deployments
-- Millions of vectors supported
+- Запущенный сервер LM Studio (Developer → Start Server, по умолчанию `http://localhost:1234/v1`)
 
-# 🔧 MCP - Model Context Protocol
+## Запуск на локальной машине
 
-MCP provides **standardized interface** for LLM tool access:
-
-```python
-read_document(file_path)
-list_documents()
-search_documents(query)
-```
-
-# 🔧 MCP Benefits
-
-- Tool Use by LLM
-- Real-time document access
-- Standardized interface
-- Easy to extend
-- Local tool execution
-
-# 💻 Tech Stack
-
-```
-Language:      Python 3.10+
-Vector DB:     FAISS
-Full-Text:     SQLite FTS5 (bm25, RU/EN Snowball stemming via PyStemmer)
-Embeddings:    nomic-embed-text-v2-moe (LM Studio, multilingual)
-LLM:           LM Studio (OpenAI-compatible API): gpt-oss-20b answers, qwen3-0.6b-mlx assists
-MCP:           FastMCP
-```
-
-# 📊 Retrieval Benchmark
-
-Three arms over the real corpus (258 chunks, 12 Russian queries drafted from
-corpus content; file-level relevance labels — agent-drafted, pending human review).
-Rerun with one command: `python main.py benchmark` (requires a built index and
-LM Studio serving the embedding models).
-
-| Arm | recall@5 | precision@5 | latency (ms/query) |
-|-----|----------|-------------|--------------------|
-| Vector (nomic-v1.5, English-focused) | 0.47 | 0.17 | 12 |
-| Vector (nomic-v2-moe, multilingual) | 0.92 | 0.35 | 19 |
-| Hybrid (multilingual + FTS + RRF) | 0.92 | 0.31 | 1896 |
-
-(Representative run; hybrid recall varies ±0.04 run-to-run with the
-Keyword Extraction LLM, occasionally hitting its 10s timeout and degrading
-to the original query.)
-
-Reading the table:
-
-- **Multilingual embeddings are the big win**: recall@5 doubles (0.47 → 0.92)
-  over the English-focused baseline — the stand-in for the original
-  `all-MiniLM-L6-v2`, which LM Studio cannot serve.
-- **Hybrid Search holds the recall** and adds lexical hits for rare terms,
-  abbreviations, and exact file/command names (visible in live queries such
-  as `migration_policy` or `flask-limiter`), at the cost of some precision
-  (FTS adds lexically-matching neighbors) and latency — the Keyword
-  Extraction LLM call dominates the ~1.9s.
-- **Model note**: the spec planned `multilingual-e5-small`, but no e5 build
-  could be served correctly through this LM Studio's embeddings endpoint
-  (XLM-R "BERT" GGUFs produce degenerate similarity; the MLX backend
-  rejects BERT). The multilingual nomic-v2-moe runs on the engine path that
-  pools correctly and is a config-constant swap
-  (`EMBEDDING_MODEL` in `src/config.py`).
-
-# 📁 Project Structure
-
-```
-src/
-├── config.py           Configuration
-├── main.py             CLI entry point
-├── assistant.py        Main orchestrator
-├── rag/
-│   ├── ingest.py      Load documents
-│   ├── chunk.py       Split text
-│   ├── embed.py       Generate embeddings
-│   ├── build_index.py Build FAISS index
-│   └── query.py       Retrieve & generate
-├── mcp/
-│   ├── server.py      MCP tool definitions
-│   └── client.py      MCP client wrapper
-└── docs/              Documentation
-```
-
-# 🚀 Index Building (Setup)
-
-```
-$ python main.py build-index
-
-1. Load documents
-  ↓
-2. Split into chunks
-  ↓
-3. Generate embeddings
-  ↓
-4. Build FAISS index
-  ↓
-5. Save files
-```
-
-# 🚀 Query Processing (Runtime)
-
-```
-User Question
-  ↓
-Embed question
-  ↓
-Search FAISS → Top 5 chunks
-  ↓
-LLM decides: Use MCP tools?
-  ↓
-Build prompt + context
-  ↓
-Call LM Studio (gpt-oss-20b)
-  ↓
-Return answer + sources
-```
-
-# ✨ Core Features
-
-- **Semantic Search**: Find by meaning, not keywords
-- **Multi-format**: .md, .txt, .pdf, .docx files
-- **Source Attribution**: Shows document sources
-- **MCP Tools**: LLM can read full documents
-- **No External APIs**: Runs locally only
-- **Fast Retrieval**: Sub-second search
-
-# ⚙️ Configuration Options
-
-```python
-CHUNK_SIZE = 700
-CHUNK_OVERLAP = 100
-EMBEDDING_MODEL = "text-embedding-nomic-embed-text-v2-moe"
-CHAT_MODEL = "openai/gpt-oss-20b"
-TOOL_DECISION_MODEL = "qwen3-0.6b-mlx"
-TOP_K = 5
-```
-
-# 🎬 Live Demo - Starting
+Все команды выполняются из каталога `src/`.
 
 ```bash
-$ python main.py
-```
+# 1. Клонировать репозиторий и перейти в src
+cd src
 
-Output:
-```
-🤖 Company Knowledge Base
-Ask questions about documentation
-Type 'exit' to stop
-```
+# 2. Создать и активировать виртуальное окружение
+python3 -m venv .venv
+source .venv/bin/activate        # Windows: .venv\Scripts\activate
 
-# 🎬 Demo - Query 1
+# 3. Установить зависимости
+pip install -r requirements.txt
 
-```
-❓ What are company values?
+# 4. Положить документы базы знаний в src/docs/
+#    (поддерживаются .md, .txt, .pdf, .docx; вложенные каталоги обходятся рекурсивно)
 
-🤖 Innovation, integrity, collaboration
+# 5. Запустить сервер LM Studio с моделями из таблицы выше
 
-📚 Sources:
-  • Loan Rangers Team.md
-  • Info Security.md
-```
-
-# 🎬 Demo - Query 2
-
-```
-❓ What documents do we have?
-
-🤖 [Uses MCP list_documents]
-  • Loan Rangers Team.md
-  • Information Security.md
-  • Services.md
-```
-
-# 🎬 Demo - Query 3
-
-```
-❓ Full security policy?
-
-🤖 [Uses MCP read_document]
-[Full document content...]
-```
-
-# 🔐 Security - Local vs Cloud
-
-**Cloud**: Data → Internet → Server
-- ⚠️ Network transmission
-- ⚠️ External storage
-- ⚠️ Subscription costs
-
-**Local**: Data → Local System
-- ✅ No transmission
-- ✅ Local storage only
-- ✅ No costs
-
-# 🔐 Implementation Safeguards
-
-- **MCP Sandbox**: Prevents path traversal
-- **Local Storage**: Documents stay on device
-- **No Telemetry**: No tracking
-- **Offline Ready**: Works without internet
-
-# ⚡ Performance Benchmarks
-
-```
-Index Building:   ~30s (one-time)
-Query Embedding:  ~50ms
-FAISS Search:     ~5ms
-LLM Generation:   2-5s
-Total Cycle:      2-6s
-```
-
-# ⚡ Tuning for Speed
-
-```python
-# Faster (smaller answer model):
-CHAT_MODEL = "qwen3-0.6b-mlx"  # not recommended for answer quality
-
-# Faster retrieval:
-TOP_K = 3
-CHUNK_SIZE = 500
-```
-
-# 🚢 Deployment - Single Machine
-
-```
-1. Install LM Studio & Python deps; load the models from src/config.py
-2. Copy docs/ to server
-3. Build index
-4. Run with nohup
-
-$ nohup python main.py > log &
-```
-
-# 🚢 Scaling - Option 1: FastAPI
-
-```
-[HTTP Clients]			[HTTP Clients + Webllm]
-       ↓        						 ↓
-   [FastAPI]     				 [FastAPI]
-       ↓         					 ↓
-[LM Studio + FAISS]      			  [FAISS]
-```
-
-# 🚢 Scaling - Option 2: Distributed
-
-```
-[Clients] → [Load Balancer]
-             ↓
-      [Multiple Retrievers]
-```
-
-# 🚢 Storage Scaling
-
-```
-Docs     Index      Build
-10 MB    ~2 MB      ~5s
-100 MB   ~20 MB     ~30s
-1 GB     ~200 MB    ~5min
-```
-
-# 🔮 Phase 2: Enhanced Features
-
-- ☐ Web UI (Streamlit)
-- ☐ API endpoints
-- ☐ Multi-language support
-- ☐ Document versioning
-- ☐ Fine-tuned embeddings
-
-# 🔮 Phase 3: Advanced
-
-- ☐ Conversation memory
-- ☐ Multi-hop reasoning
-- ☐ Metadata filtering
-- ☐ Feedback loop
-- ☐ Analytics dashboard
-
-# 🔮 Phase 4: Enterprise
-
-- ☐ User authentication
-- ☐ Audit logging
-- ☐ Role-based access
-- ☐ LLM fine-tuning
-- ☐ Cost analysis
-
-# 📊 Why This Works
-
-| Aspect | Traditional | Our RAG |
-|--------|---|---|
-| **Understanding** | Keywords | Semantic |
-| **Answers** | Documents | Direct |
-| **Privacy** | Cloud | Local |
-| **Cost** | Subscription | One-time |
-| **Speed** | Slow | Sub-second |
-
-# ✅ What You Have Now
-
-- Local privacy-first knowledge base
-- Fast semantic search (FAISS)
-- Intelligent tool use (MCP)
-- Maintainable Python code
-- Foundation for enterprise features
-
-# 🙋 Quick Reference
-
-```bash
-# Build index
+# 6. Собрать индекс (FAISS + FTS5; необходим запущенный LM Studio для эмбеддингов)
 python main.py build-index
 
-# Run interactively
+# 7. Запустить интерактивный режим
 python main.py
-
-# Check config
-cat config.py
 ```
 
-# 📚 Resources
+При первом запросе индекс также собирается автоматически, но явный `build-index` предпочтительнее.
 
-- **Code**: MobilaName/local-rag-mcp
-- **FAISS**: facebook/faiss
-- **LM Studio**: lmstudio.ai
-- **FastMCP**: github.com/jlowin/fastmcp
-- **Transformers**: huggingface.co
+### Обновление базы знаний
 
-**Thank You!**
+После добавления/изменения документов пересоберите индекс:
+
+```bash
+python main.py build-index
+```
+
+Артефакты сборки (в `src/`, в git не попадают): `index.faiss`, `chunks.pkl`, `fts_index.db`.
+
+## Команды
+
+| Команда | Действие |
+|---|---|
+| `python main.py` | Интерактивный режим Q&A (выход: `exit`/`quit`) |
+| `python main.py build-index` | Пересобрать индексы из `src/docs/` |
+| `python main.py benchmark` | Бенчмарк поиска (нужны собранный индекс и LM Studio) |
+
+## Структура проекта
+
+```
+local-rag-mcp/
+├── CONTEXT.md               # Доменная терминология (единый словарь проекта)
+├── AGENTS.md                # Инструкции для агентных workflows
+├── docs/
+│   ├── adr/                 # Architecture Decision Records
+│   └── agents/              # Правила issue-трекера, триажа, доменных доков
+├── tasks/                   # Исходное задание
+└── src/
+    ├── main.py              # CLI: build-index | benchmark | интерактив
+    ├── assistant.py         # Оркестратор: RAG + решение об MCP-инструментах
+    ├── config.py            # Вся конфигурация (модели, пути, параметры)
+    ├── llm.py               # Обёртки над OpenAI-совместимым API LM Studio
+    ├── benchmark.py         # Трёхрукий бенчмарк поиска (recall/precision/latency)
+    ├── rag/
+    │   ├── ingest.py        # Загрузка документов (.md/.txt/.pdf/.docx)
+    │   ├── chunk.py         # Разбиение на чанки
+    │   ├── embed.py         # Эмбеддинги через LM Studio
+    │   ├── build_index.py   # Сборка FAISS- и FTS-индексов
+    │   ├── keywords.py      # Keyword Extraction (малая LLM, silent fallback)
+    │   ├── tokenize.py      # Токенизация + RU/EN стемминг (PyStemmer)
+    │   ├── fts.py           # Full-Text Search: SQLite FTS5, bm25
+    │   ├── fusion.py        # RRF-слияние (k = 60)
+    │   └── query.py         # retrieve() — единый API поиска; prompt; LLM
+    ├── mcp/
+    │   ├── server.py        # MCP-сервер (FastMCP, stdio): 3 инструмента
+    │   └── client.py        # MCP-клиент
+    ├── tests/               # pytest-тесты (запуск из src/)
+    ├── docs/                # База знаний — корпус документов
+    ├── requirements.txt     # Зависимости
+    └── requirements-dev.txt # dev-зависимости (pytest)
+```
+
+## Конфигурация
+
+Все настройки — константы в `src/config.py`:
+
+```python
+DOCUMENTS_DIR = "./docs"                                  # каталог базы знаний
+CHUNK_SIZE = 700                                           # размер чанка
+CHUNK_OVERLAP = 100                                        # перекрытие чанков
+EMBEDDING_MODEL = "text-embedding-nomic-embed-text-v2-moe" # эмбеддинги
+CHAT_MODEL = "openai/gpt-oss-20b"                          # финальный ответ
+TOOL_DECISION_MODEL = "qwen3-0.6b-mlx"                     # MCP-решения / ключевые слова
+LM_STUDIO_BASE_URL = "http://localhost:1234/v1"            # сервер LM Studio
+TOP_K = 5                                                  # чанков в контексте
+```
+
+## MCP-инструменты
+
+- `read_document(file_path)` — полный текст документа (песочница: путь только внутри `DOCUMENTS_DIR`, защита от path traversal)
+- `list_documents()` — список всех документов базы
+- `search_documents(query)` — поиск по содержимому через Hybrid Search
+
+Решение о вызове инструмента принимает малая LLM (`TOOL_DECISION_MODEL`) на основе retrieved-чанков; при ошибке решения ассистент продолжает работу только с RAG.
+
+## Отказоустойчивость поиска
+
+`retrieve()` деградирует тихо и логируется громко: падение Keyword Extraction → поиск по исходному запросу; падение FTS-ветки → только Vector Search; падение векторной ветки → только Full-Text Search. Исключения не покидают границу поиска.
+
+## Тесты
+
+```bash
+cd src
+pip install -r requirements-dev.txt
+pytest
+```
+
+## Бенчмарк поиска
+
+Три конфигурации на реальном корпусе (258 чанков, 12 русских запросов; rerun: `python main.py benchmark`).
+
+| Конфигурация | recall@5 | precision@5 | latency (мс/запрос) |
+|---|---|---|---|
+| Vector (nomic-v1.5, англо-ориентированная) | 0.47 | 0.17 | 12 |
+| Vector (nomic-v2-moe, мультиязычная) | 0.92 | 0.35 | 19 |
+| Hybrid (мультиязычная + FTS + RRF) | 0.92 | 0.31 | 1896 |
+
+Выводы:
+
+- **Мультиязычные эмбеддинги — главный выигрыш**: recall@5 удваивается (0.47 → 0.92).
+- **Hybrid Search держит recall** и добавляет лексические попадания по редким терминам, аббревиатурам и точным именам файлов/команд, ценой точности и задержки (~1.9с доминирует вызов Keyword Extraction LLM).
+- В плане был `multilingual-e5-small`, но e5-сборки корректно не serv'ятся этим билдом LM Studio; замена — одна константа `EMBEDDING_MODEL` в `src/config.py`.
+
+## Устранение неполадок
+
+| Проблема | Решение |
+|---|---|
+| `Index not found` / пустой результат | `python main.py build-index`; проверьте, что `src/docs/` не пуст |
+| Ошибка соединения с LM Studio | Сервер запущен? (`http://localhost:1234/v1`), модели загружены и совпадают с `src/config.py` |
+| `No documents found` | Проверьте `DOCUMENTS_DIR` и расширения файлов (`.md`, `.txt`, `.pdf`, `.docx`) |
+| Медленный гибридный поиск | Задержка в основном от Keyword Extraction (таймаут 10с); при таймауте — тихий fallback на исходный запрос |
+| Ошибки импорта | Команды запускать из каталога `src/` с активированным venv |
+
+## Полезные ссылки
+
+- Доменная терминология: `CONTEXT.md`
+- ADR: `docs/adr/0001-sqlite-fts5-for-full-text-search.md`
+- FAISS: https://github.com/facebookresearch/faiss
+- LM Studio: https://lmstudio.ai
+- FastMCP: https://github.com/jlowin/fastmcp
