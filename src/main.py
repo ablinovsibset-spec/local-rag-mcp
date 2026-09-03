@@ -13,6 +13,12 @@ def main():
         from rag.build_index import build_index
         build_index()
         return
+
+    if len(sys.argv) > 1 and sys.argv[1] == "benchmark":
+        # Retrieval benchmark mode
+        from benchmark import main as benchmark_main
+        benchmark_main()
+        return
     
     # Interactive Q&A mode
     assistant = CompanyKBAssistant()

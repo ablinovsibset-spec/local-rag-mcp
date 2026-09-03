@@ -1,111 +1,127 @@
-# Company Knowledge Base Assistant
+# Company Knowledge Base Assistant (src/)
 
-An intelligent Q&A system that answers questions about company documentation using RAG (Retrieval-Augmented Generation) and MCP (Model Context Protocol) tools.
+Модуль локального ассистента вопросов-ответов по корпоративной базе знаний: RAG с гибридным поиском и MCP-инструментами, полностью локальные LLM через LM Studio. Полное описание архитектуры и бенчмарки — в корневом [`README.md`](../README.md).
 
-## Features
+## Возможности
 
-- **RAG-powered search**: Semantic search over company documentation using FAISS
-- **MCP tools**: Dynamic document reading and management
-- **Local LLM**: Privacy-preserving answers using Ollama
+- **Hybrid Search**: Vector Search (FAISS) и Full-Text Search (SQLite FTS5, BM25) параллельно, слияние через RRF (k = 60)
+- **Keyword Extraction**: малая LLM выделяет ключевые термины запроса до поиска (тихий fallback на исходный запрос)
+- **Мультиязычность**: эмбеддинги nomic-embed-text-v2-moe (100+ языков, включая русский), стемминг RU/EN (PyStemmer)
+- **MCP-инструменты**: `read_document`, `list_documents`, `search_documents`
+- **Мультиформат**: `.md`, `.txt`, `.pdf`, `.docx`
+- **Приватность**: все инференсы и индексы — локально, без внешних API
 
-## Setup
+## Установка
 
-### 1. Install Dependencies
+Все команды выполняются из этого каталога (`src/`).
+
+### 1. Зависимости
 
 ```bash
+python3 -m venv .venv
+source .venv/bin/activate        # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-### 2. Set Up Documents
+### 2. Документы
 
-Create a `docs/` directory and add your company documentation files (`.txt`, `.md`, `.pdf`, `.docx`):
+Положите файлы базы знаний в `docs/` (`.md`, `.txt`, `.pdf`, `.docx`; вложенные каталоги обходятся рекурсивно).
 
-```bash
-mkdir docs
-# Add your company documentation files here
-```
+### 3. LM Studio
 
-### 3. Configure
+Запущенный сервер LM Studio (`http://localhost:1234/v1`) с моделями из `config.py`:
 
-Edit `config.py` to set:
-- `DOCUMENTS_DIR`: Path to your documentation directory
-- `OLLAMA_MODEL`: Local LLM model to use (default: "llama3")
-- Other settings as needed
+| Роль | Модель в LM Studio |
+|---|---|
+| Эмбеддинги | `text-embedding-nomic-embed-text-v2-moe` |
+| Финальный ответ | `openai/gpt-oss-20b` |
+| Решение об MCP-инструментах / Keyword Extraction | `qwen3-0.6b-mlx` |
 
-### 4. Build Index (Optional)
-
-The index will be built automatically on first use. To manually build it:
+### 4. Сборка индекса
 
 ```bash
 python main.py build-index
 ```
 
-Or directly:
+Артефакты (в git не попадают): `index.faiss`, `chunks.pkl`, `fts_index.db`.
+
+При первом запросе индекс также собирается автоматически, но явный `build-index` предпочтительнее.
+
+## Использование
 
 ```bash
-python -m rag.build_index
+python main.py            # интерактивный режим Q&A (выход: exit/quit)
+python main.py build-index  # пересобрать индексы
+python main.py benchmark   # бенчмарк поиска
 ```
 
-## Usage
-
-### Interactive CLI
-
-Run the interactive assistant:
-
-```bash
-python main.py
-```
-
-Then ask questions about your company documentation!
-
-## Project Structure
+## Структура
 
 ```
 src/
-├── config.py              # Configuration
-├── main.py                # CLI entry point
-├── assistant.py           # Main assistant class
-├── rag/                   # RAG components
-│   ├── ingest.py         # Document ingestion
-│   ├── chunk.py          # Text chunking
-│   ├── embed.py          # Embedding generation
-│   ├── build_index.py    # FAISS index building
-│   └── query.py          # Query and retrieval
-├── mcp/                   # MCP components
-│   ├── server.py         # MCP server with tools
-│   └── client.py         # MCP client
-├── requirements.txt      # Dependencies
-└── README.md             # This file
+├── main.py              # CLI: build-index | benchmark | интерактив
+├── assistant.py         # Оркестратор: RAG + решение об MCP-инструментах
+├── config.py            # Вся конфигурация (модели, пути, параметры)
+├── llm.py               # Обёртки над OpenAI-совместимым API LM Studio
+├── benchmark.py         # Трёхрукий бенчмарк поиска (recall/precision/latency)
+├── rag/
+│   ├── ingest.py        # Загрузка документов (.md/.txt/.pdf/.docx)
+│   ├── chunk.py         # Разбиение на чанки
+│   ├── embed.py         # Эмбеддинги через LM Studio
+│   ├── build_index.py   # Сборка FAISS- и FTS-индексов
+│   ├── keywords.py      # Keyword Extraction (малая LLM, silent fallback)
+│   ├── tokenize.py      # Токенизация + RU/EN стемминг (PyStemmer)
+│   ├── fts.py           # Full-Text Search: SQLite FTS5, bm25
+│   ├── fusion.py        # RRF-слияние (k = 60)
+│   └── query.py         # retrieve() — единый API поиска; prompt; LLM
+├── mcp/
+│   ├── server.py        # MCP-сервер (FastMCP, stdio): 3 инструмента
+│   └── client.py        # MCP-клиент
+├── tests/               # pytest-тесты (запуск из src/)
+├── docs/                # База знаний — корпус документов
+├── requirements.txt     # Зависимости
+└── requirements-dev.txt # dev-зависимости (pytest)
 ```
 
-## How It Works
+## Конфигурация
 
-1. **Document Ingestion**: Loads documents from the `docs/` directory
-2. **Chunking**: Splits documents into smaller chunks with overlap
-3. **Embedding**: Generates embeddings using SentenceTransformers
-4. **Indexing**: Builds FAISS vector index for fast similarity search
-5. **Query**: 
-   - Retrieves relevant chunks using semantic search
-   - Optionally uses MCP tools for document access
-   - Generates answer using local LLM (Ollama)
+Все настройки — константы в `config.py`:
 
-## MCP Tools
+```python
+DOCUMENTS_DIR = "./docs"                                  # каталог базы знаний
+CHUNK_SIZE = 700                                           # размер чанка
+CHUNK_OVERLAP = 100                                        # перекрытие чанков
+EMBEDDING_MODEL = "text-embedding-nomic-embed-text-v2-moe" # эмбеддинги
+CHAT_MODEL = "openai/gpt-oss-20b"                          # финальный ответ
+TOOL_DECISION_MODEL = "qwen3-0.6b-mlx"                     # MCP-решения / ключевые слова
+LM_STUDIO_BASE_URL = "http://localhost:1234/v1"            # сервер LM Studio
+TOP_K = 5                                                  # чанков в контексте
+```
 
-The MCP server provides:
-- `read_document`: Read a specific document
-- `list_documents`: List all available documents
-- `search_documents`: Search documents by name
+## MCP-инструменты
 
-## Troubleshooting
+- `read_document(file_path)` — полный текст документа (песочница: путь только внутри `DOCUMENTS_DIR`, защита от path traversal)
+- `list_documents()` — список всех документов базы
+- `search_documents(query)` — поиск по содержимому через Hybrid Search
 
-**Index not found**: Run `python main.py build-index` first
+Решение о вызове инструмента принимает малая LLM (`TOOL_DECISION_MODEL`) на основе retrieved-чанков; при ошибке решения ассистент продолжает работу только с RAG.
 
-**Ollama not responding**: Make sure Ollama is running and the model is installed:
+## Тесты
+
 ```bash
-ollama pull llama3
+pip install -r requirements-dev.txt
+pytest
 ```
 
-**No documents found**: Check that `DOCUMENTS_DIR` in `config.py` points to your documents
+## Устранение неполадок
+
+| Проблема | Решение |
+|---|---|
+| `Index not found` / пустой результат | `python main.py build-index`; проверьте, что `docs/` не пуст |
+| Ошибка соединения с LM Studio | Сервер запущен? (`http://localhost:1234/v1`), модели загружены и совпадают с `config.py` |
+| `No documents found` | Проверьте `DOCUMENTS_DIR` и расширения файлов (`.md`, `.txt`, `.pdf`, `.docx`) |
+| Медленный гибридный поиск | Задержка в основном от Keyword Extraction (таймаут 10с); при таймауте — тихий fallback на исходный запрос |
+| Ошибки импорта | Команды запускать из каталога `src/` с активированным venv |
 
 ## License
 

@@ -1,5 +1,4 @@
 import json
-import ollama
 import sys
 from pathlib import Path
 from rich.console import Console
@@ -7,15 +6,15 @@ from rich.markdown import Markdown
 
 # Add current directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent))
+from llm import chat_completion
 from rag.query import retrieve, build_prompt, ask_llm
 from mcp.client import MCPClient
-from config import OLLAMA_MODEL
+from config import TOOL_DECISION_MODEL, TOOL_DECISION_TIMEOUT
 
 class CompanyKBAssistant:
     """Company Knowledge Base Assistant combining RAG and MCP."""
-    
+
     def __init__(self):
-        self.llm_client = ollama.Client()
         self.mcp = None
         self._init_mcp()
         
@@ -55,7 +54,7 @@ User question: {query}
 Available MCP tools:
 1. read_document(file_path: str) - Read a specific document file (use when you need full document content)
 2. list_documents() - List all available documents (use when user asks "what documents exist" or "list all docs")
-3. search_documents(query: str) - Search for documents by name (use when user asks to find a specific document)
+3. search_documents(query: str) - Search the knowledge base content for relevant passages (use when the chunks above are not enough or user asks to find specific information)
 
 Decision rules:
 - If the retrieved chunks fully answer the question, set use_mcp to false
@@ -76,15 +75,15 @@ Examples:
 Your JSON response:"""
 
         try:
-            response = self.llm_client.chat(
-                model=OLLAMA_MODEL,
-                messages=[
+            response_text = chat_completion(
+                TOOL_DECISION_MODEL,
+                [
                     {"role": "system", "content": "You are a helpful assistant that decides when to use tools. Always respond with valid JSON only."},
                     {"role": "user", "content": decision_prompt}
-                ]
-            )
-            
-            response_text = response["message"]["content"].strip()
+                ],
+                timeout=TOOL_DECISION_TIMEOUT,
+                temperature=0,
+            ).strip()
             
             # Clean up JSON if wrapped in markdown
             if response_text.startswith("```"):

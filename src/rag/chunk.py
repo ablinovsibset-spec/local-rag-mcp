@@ -1,4 +1,3 @@
-import tiktoken
 import sys
 from pathlib import Path
 
@@ -6,18 +5,28 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from config import CHUNK_SIZE, CHUNK_OVERLAP
 
-encoder = tiktoken.get_encoding("cl100k_base")
+encoder = None
+
+
+def _get_encoder():
+    """Load the tokenizer on first use, exactly once."""
+    global encoder
+    if encoder is None:
+        import tiktoken
+
+        encoder = tiktoken.get_encoding("cl100k_base")
+    return encoder
 
 
 def chunk_text(text: str):
     """Split text into chunks with overlap."""
-    tokens = encoder.encode(text)
+    tokens = _get_encoder().encode(text)
     chunks = []
 
     step = CHUNK_SIZE - CHUNK_OVERLAP
     for i in range(0, len(tokens), step):
         chunk_tokens = tokens[i:i + CHUNK_SIZE]
-        chunks.append(encoder.decode(chunk_tokens))
+        chunks.append(_get_encoder().decode(chunk_tokens))
 
     return chunks
 
